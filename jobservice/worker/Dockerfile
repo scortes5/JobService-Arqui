@@ -1,10 +1,6 @@
-FROM python:3.11-slim
-
+FROM python:3.10-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY worker.py .
-
-ENV PYTHONUNBUFFERED=1
-CMD ["celery", "-A", "worker.celery", "worker", "--loglevel=INFO", "--concurrency=2"]
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["celery", "-A", "worker", "worker", "--loglevel=info"]

@@ -1,29 +1,67 @@
-version: "3.9"
+version: "3.8"
 
 services:
   redis:
-    image: redis:alpine
-    container_name: redis
-    restart: unless-stopped
+    image: redis:7
     ports:
       - "6379:6379"
+    networks: [jobnet]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   jobmaster:
     build: ./jobmaster
-    container_name: jobmaster
-    restart: unless-stopped
-    env_file:
-      - .env
     ports:
       - "4000:4000"
-    depends_on:
-      - redis
-
-  worker:
-    build: ./worker
-    container_name: worker
-    restart: unless-stopped
     env_file:
       - .env
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 4000
+    networks: [jobnet]
+    restart: unless-stopped
+
+  worker1:
+    build: ./worker
+    env_file: [.env]
+    command: celery -A worker worker --loglevel=info -Q reco
+    depends_on:
+      redis:
+        condition: service_healthy
+      jobmaster:
+        condition: service_started
+    networks: [jobnet]
+    restart: unless-stopped
+
+  worker2:
+    build: ./worker
+    env_file: [.env]
+    command: celery -A worker worker --loglevel=info -Q reco
+    depends_on:
+      redis:
+        condition: service_healthy
+      jobmaster:
+        condition: service_started
+    networks: [jobnet]
+    restart: unless-stopped
+
+  worker3:
+    build: ./worker
+    env_file: [.env]
+    command: celery -A worker worker --loglevel=info -Q reco
+    depends_on:
+      redis:
+        condition: service_healthy
+      jobmaster:
+        condition: service_started
+    networks: [jobnet]
+    restart: unless-stopped
+
+
+networks:
+  jobnet:
+    driver: bridge

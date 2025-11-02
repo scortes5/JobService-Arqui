@@ -1,62 +1,55 @@
-import os
 import uuid
-from typing import Any, Dict, Optional, List
-
+from typing import List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from celery import Celery
-
-BROKER_URL = os.getenv("BROKER_URL", "redis://redis:6379/0")
-RESULT_BACKEND = os.getenv("RESULT_BACKEND", "redis://redis:6379/0")
-
-celery = Celery("reco", broker=BROKER_URL, backend=RESULT_BACKEND)
+from celery.result import AsyncResult
+from celery_app import celery_app  
 
 app = FastAPI(title="JobMaster - Recommendations", version="1.0.0")
 
+# ======== MODELOS ======== #
 class PropertyIn(BaseModel):
     comuna: str
     dormitorios: int
     precio: float
-    # lat/lon de la propiedad comprada (en grados)
-    lat: float = Field(..., description="latitud")
-    lon: float = Field(..., description="longitud")
+    lat: float = Field(..., description="Latitud de la propiedad")
+    lon: float = Field(..., description="Longitud de la propiedad")
 
 class JobCreateIn(BaseModel):
     property: PropertyIn
 
+# ======== ENDPOINTS ======== #
 @app.get("/heartbeat")
 def heartbeat():
-    return {"ok": True}
+    return {"ok": True, "service": "JobMaster"}
 
 @app.post("/job")
 def create_job(payload: JobCreateIn):
     """
     Crea un job de recomendación:
-    - task name: tasks.recommend
-    - args: dict con la propiedad base
-    - task_id: uuid4 para facilidad de trazabilidad
+    - task: tasks.recommend
+    - args: propiedad base
     """
     try:
         job_id = str(uuid.uuid4())
-        celery.send_task("tasks.recommend", args=[payload.property.model_dump()], task_id=job_id)
+        celery_app.send_task(
+            "tasks.recommend",
+            args=[payload.property.model_dump()],
+            queue="reco",
+            task_id=job_id
+        )
         return {"job_id": job_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"error creando job: {e}")
 
 @app.get("/job/{job_id}")
 def get_job(job_id: str):
-    """
-    Consulta estado y resultado del job:
-    - PENDING | STARTED | RETRY | FAILURE | SUCCESS
-    """
-    result = celery.AsyncResult(job_id)
-    # result.result puede ser None si aún no termina
+    result = AsyncResult(job_id, app=celery_app)
     return {"status": result.status, "result": result.result}
-
 
 @app.get("/mock/properties")
 def mock_properties() -> List[dict]:
-    """ Catálogo falso para testear el worker sin depender del backend Java. """
+    """Mock de propiedades para testear worker sin backend real"""
     return [
         {
             "id": 1, "titulo": "Depto en Ñuñoa", "comuna": "Ñuñoa",
