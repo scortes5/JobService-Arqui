@@ -100,5 +100,4 @@ def geocode(addr: str) -> Optional[Dict[str, Any]]:
         _cache_put(addr, geo)
     return geo
 
-print(geocode("Av. Libertador Bernardo O'Higgins 1234, Santiago, Chile"))
-print(geocode("Fray Montalva 360, Las Condes, Chile"))
+
