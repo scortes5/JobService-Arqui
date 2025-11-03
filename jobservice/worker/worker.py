@@ -126,7 +126,6 @@ def recommend(base_property: Dict[str, Any]):
                 "dormitorios": _parse_bedrooms(p.get("bedrooms")),
                 "lat": base_property.get("lat"),
                 "lon": base_property.get("lon"),
-                "distance_km": p["_distance_km"],
                 "url": p.get("url"),
                 "img": p.get("img"),
             }
