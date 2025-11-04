@@ -27,8 +27,19 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def fetch_all_properties() -> List[Dict[str, Any]]:
-    data = get_internal_properties(page=1, limit=500)
-    return data.get("results", [])
+    all_results: List[Dict[str, Any]] = []
+    page = 1
+    limit = 500
+    while True:
+        data = get_internal_properties(page=page, limit=limit)
+        results = data.get("results", [])
+        if not results:
+            break
+        all_results.extend(results)
+        if len(results) < limit:
+            break
+        page += 1
+    return all_results
 
 
 def _safe_float(x, default=0.0):
