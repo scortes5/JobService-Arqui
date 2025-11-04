@@ -62,8 +62,18 @@ def create_job(payload: JobCreateIn):
     # 1) Determinar string de ubicación (location/name)
     location_str = p.get("location") or p.get("name")
 
-    # 2) Extraer comuna
-    comuna = extract_comuna(location_str) if location_str else None
+    # 2) Extraer comuna - intentar de múltiples fuentes
+    comuna = None
+    if location_str:
+        comuna = extract_comuna(location_str)
+    
+    # Si no se pudo extraer de location, intentar de name si son diferentes
+    if not comuna and p.get("name") and p.get("name") != location_str:
+        comuna = extract_comuna(p.get("name"))
+    
+    # Si no se pudo extraer de location, intentar de otros campos posibles
+    if not comuna and p.get("address"):
+        comuna = extract_comuna(p.get("address"))
 
     # 3) Normalizar dormitorios: primero bedrooms, luego beedrooms
     bedrooms_raw = p.get("bedrooms")
@@ -94,7 +104,10 @@ def create_job(payload: JobCreateIn):
     
     # Log para debugging
     print(f"[JobMaster] Creating job for property:")
-    print(f"  - location_str: {location_str}")
+    print(f"  - RAW payload: {p}")
+    print(f"  - location field: {p.get('location')}")
+    print(f"  - name field: {p.get('name')}")
+    print(f"  - location_str used: {location_str}")
     print(f"  - comuna extracted: {comuna}")
     print(f"  - dormitorios: {dormitorios}")
     print(f"  - price: {price}")

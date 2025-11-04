@@ -61,14 +61,27 @@ def _title_keep(s: str) -> str:
 def extract_comuna(location: Optional[str]) -> Optional[str]:
     if not location:
         return None
+    
+    # 1) Intentar por partes separadas por coma (de derecha a izquierda)
     loc = re.sub(r"\s*,\s*", ",", location.strip())
     parts = [p for p in loc.split(",") if p]
     for i in range(len(parts) - 1, -1, -1):
         cand = _title_keep(parts[i].strip())
         if cand in COMUNAS:
             return cand
+    
+    # 2) Intentar el string completo normalizado
     cand = _title_keep(re.sub(r"\s+", " ", location.strip()))
     if cand in COMUNAS:
         return cand
+    
+    # 3) Buscar cualquier comuna que aparezca como substring en el texto
+    location_normalized = location.lower()
+    for comuna in COMUNAS:
+        # Buscar la comuna como palabra completa (con límites de palabra)
+        pattern = r'\b' + re.escape(comuna.lower()) + r'\b'
+        if re.search(pattern, location_normalized):
+            return comuna
+    
     return None
 
