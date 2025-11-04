@@ -7,7 +7,7 @@ PROPERTIES_API_BASE_URL = os.getenv(
     "https://api.iic2173grupo4.tech",
 )
 
-def get_internal_properties(page: int = 1, limit: int = 25) -> dict:
+def get_internal_properties(page: int = 1, limit: int = 50000) -> dict:
     token = auth0_client.get_token()
     headers = {
         "Authorization": f"Bearer {token}",
