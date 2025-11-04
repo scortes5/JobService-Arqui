@@ -43,31 +43,35 @@ def _safe_float(x, default=0.0):
 def basic_filter_and_rank(base: Dict[str, Any],
                           props: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Estrategia:
-    1) Intento estricto: misma comuna + mismos dormitorios + precio <= base.
-    2) Si no hay: misma comuna + mismos dormitorios (ignoro precio).
-    3) Si no hay: misma comuna (ignoro dormitorios y precio).
-    4) Si no hay: fallback global (las más baratas del sistema).
-    En todos los casos, si tengo lat/lon base y >3 candidatos, ordeno por distancia + precio.
+    Cumple el enunciado:
+
+    1) Obtener comuna, ubicación geográfica, dormitorios y precio de la propiedad base.
+    2) Filtrar propiedades del sistema con:
+       - misma comuna
+       - mismo número de dormitorios
+       - precio <= precio base
+    3) Ordenar por:
+       - distancia geográfica a la propiedad base
+       - luego por precio (menor a mayor)
+    4) Devolver a lo más 3 coincidencias. Si no hay, se devuelve lista vacía.
     """
 
     base_comuna = (base.get("comuna") or "").strip().lower()
-    base_dorms = base.get("dormitorios") or 0
-    base_price = base.get("price")
-    base_lat = base.get("lat")
-    base_lon = base.get("lon")
 
+    base_dorms = base.get("dormitorios")
     try:
-        base_dorms = int(base_dorms)
+        base_dorms = int(base_dorms) if base_dorms is not None else 0
     except Exception:
         base_dorms = 0
 
-    base_price = _safe_float(base_price, default=0.0)
+    base_price = _safe_float(base.get("price"), default=0.0)
+    base_lat = base.get("lat")
+    base_lon = base.get("lon")
+    base_id = base.get("property_id")
 
-    strict_candidates: List[Dict[str, Any]] = []
-    same_comuna_dorms: List[Dict[str, Any]] = []
-    same_comuna: List[Dict[str, Any]] = []
+    candidates: List[Dict[str, Any]] = []
 
+    # 2) FILTRO ESTRICTO según enunciado
     for p in props:
         try:
             loc_str = p.get("location") or p.get("name") or ""
@@ -75,84 +79,90 @@ def basic_filter_and_rank(base: Dict[str, Any],
             dormitorios_p = _parse_bedrooms(p.get("bedrooms"))
             price_p = _safe_float(p.get("price"), default=float("inf"))
 
-            # misma comuna + mismos dormitorios
-            if comuna_p == base_comuna and dormitorios_p == base_dorms:
-                p_copy = {**p}  # no mutar original
-                same_comuna_dorms.append(p_copy)
+            # excluir la misma propiedad base si está en el listado interno
+            if base_id is not None and p.get("id") == base_id:
+                continue
 
-                # versión estricta: además precio <= base
-                if price_p <= base_price:
-                    strict_candidates.append(p_copy)
+            # misma comuna
+            if comuna_p != base_comuna:
+                continue
 
-            # misma comuna (para fallback más laxo)
-            elif comuna_p == base_comuna:
-                p_copy = {**p}
-                same_comuna.append(p_copy)
+            # mismos dormitorios
+            if dormitorios_p != base_dorms:
+                continue
 
+            # precio <= precio base
+            if price_p > base_price:
+                continue
+
+            p_copy = {**p}
+            candidates.append(p_copy)
         except Exception:
             continue
 
-    # elegimos el "nivel" más estricto que tenga resultados
-    if strict_candidates:
-        candidates = strict_candidates
-    elif same_comuna_dorms:
-        candidates = same_comuna_dorms
-    elif same_comuna:
-        candidates = same_comuna
-    else:
-        # Fallback global: tomar las más baratas del sistema
-        fallback = []
-        for p in props:
-            p_copy = {**p}
-            fallback.append(p_copy)
-        if not fallback:
-            return []
-        fallback.sort(key=lambda x: _safe_float(x.get("price"), default=float("inf")))
-        candidates = fallback[:20]  # recorto universo antes de rankear
+    # 4) Si no hay coincidencias, se devuelve lista vacía
+    if not candidates:
+        return []
 
-    # Si no tengo coordenadas base o hay pocas, ordeno solo por precio
-    if base_lat is None or base_lon is None or len(candidates) <= 3:
+    # 3) ORDENAR según cercanía geográfica y precio
+    # Si no tengo coordenadas base, solo ordeno por precio
+    if base_lat is None or base_lon is None:
         for p in candidates:
-            p["_distance_km"] = 0.0
-        candidates.sort(key=lambda x: (_safe_float(x.get("_distance_km"), 0.0),
-                                       _safe_float(x.get("price"), float("inf"))))
+            p["_distance_km"] = None
+        candidates.sort(key=lambda x: _safe_float(x.get("price"), float("inf")))
         return candidates[:3]
 
-    # Tengo lat/lon base y suficientes candidatos → geocodifico y calculo distancias
+    # Tengo lat/lon base → calculo distancias
     enriched: List[Dict[str, Any]] = []
     for p in candidates:
         loc_str = p.get("location") or p.get("name") or ""
         dist = float("inf")
+        lat_p = p.get("lat")
+        lon_p = p.get("lon")
 
-        if loc_str:
+        # Si la propiedad no tiene lat/lon guardados, intento geocodificar
+        if (lat_p is None or lon_p is None) and loc_str:
             try:
                 g = geocode(loc_str)
                 if g and g.get("lat") is not None and g.get("lon") is not None:
-                    dist = haversine_km(
-                        float(base_lat),
-                        float(base_lon),
-                        float(g["lat"]),
-                        float(g["lon"]),
-                    )
+                    lat_p = g["lat"]
+                    lon_p = g["lon"]
+                    p["lat"], p["lon"] = lat_p, lon_p
+            except Exception:
+                pass
+
+        if lat_p is not None and lon_p is not None:
+            try:
+                dist = haversine_km(
+                    float(base_lat),
+                    float(base_lon),
+                    float(lat_p),
+                    float(lon_p),
+                )
             except Exception:
                 dist = float("inf")
 
         p["_distance_km"] = dist
         enriched.append(p)
 
-    enriched = [p for p in enriched if math.isfinite(p["_distance_km"])]
-
-    # si por algún motivo nadie tuvo distancia finita, vuelvo a ordenar solo por precio
-    if not enriched:
+    # Si no pude calcular distancias finitas, ordeno solo por precio
+    enriched_valid = [p for p in enriched if math.isfinite(p.get("_distance_km", float("inf")))]
+    if not enriched_valid:
         for p in candidates:
-            p["_distance_km"] = 0.0
-        candidates.sort(key=lambda x: (_safe_float(x.get("_distance_km"), 0.0),
-                                       _safe_float(x.get("price"), float("inf"))))
+            p["_distance_km"] = None
+        candidates.sort(key=lambda x: _safe_float(x.get("price"), float("inf")))
         return candidates[:3]
 
-    enriched.sort(key=lambda x: (x["_distance_km"],
-                                 _safe_float(x.get("price"), float("inf"))))
-    return enriched[:3]
+    # Orden final: primero distancia, luego precio
+    enriched_valid.sort(
+        key=lambda x: (
+            x["_distance_km"],
+            _safe_float(x.get("price"), float("inf")),
+        )
+    )
+
+    return enriched_valid[:3]
+
 
 
 # ---------------- task Celery ---------------- #
