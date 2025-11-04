@@ -79,6 +79,8 @@ def basic_filter_and_rank(base: Dict[str, Any],
 
     candidates: List[Dict[str, Any]] = []
 
+    print(f"Base property: comuna='{base_comuna}', dormitorios={base_dorms}, price={base_price}, lat={base_lat}, lon={base_lon}")
+
     # 2) FILTRO ESTRICTO según enunciado, pero sólo si tenemos datos para filtrar
     for p in props:
         try:
@@ -102,6 +104,8 @@ def basic_filter_and_rank(base: Dict[str, Any],
             # precio <= precio base (solo si conozco precio base)
             if base_price is not None and price_p > base_price:
                 continue
+
+            print(f"Candidate property: comuna='{comuna_p}', dormitorios={dormitorios_p}, price={price_p}, lat={lat_p}, lon={lon_p}")
 
             p_copy = {**p}
             candidates.append(p_copy)
