@@ -91,6 +91,14 @@ def create_job(payload: JobCreateIn):
         "lon": p.get("lon"),
         "raw": p,
     }
+    
+    # Log para debugging
+    print(f"[JobMaster] Creating job for property:")
+    print(f"  - location_str: {location_str}")
+    print(f"  - comuna extracted: {comuna}")
+    print(f"  - dormitorios: {dormitorios}")
+    print(f"  - price: {price}")
+    print(f"  - lat/lon: {p.get('lat')}, {p.get('lon')}")
 
     # 7) Encolar tarea en Celery (SIN task_queues[0])
     job_id = str(uuid.uuid4())

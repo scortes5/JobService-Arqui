@@ -55,6 +55,11 @@ def basic_filter_and_rank(base: Dict[str, Any],
     """
 
     base_comuna = (base.get("comuna") or "").strip().lower()
+    
+    # CRÍTICO: Si no hay comuna base, no podemos filtrar (enunciado requiere misma comuna)
+    if not base_comuna:
+        print("⚠ WARNING: Base property has no comuna - cannot filter by comuna (required by spec)")
+        return []
 
     # dormitorios base: si no se puede parsear, NO filtramos por dormitorios
     base_dorms_raw = base.get("dormitorios")
@@ -78,8 +83,20 @@ def basic_filter_and_rank(base: Dict[str, Any],
     base_id = base.get("property_id")
 
     candidates: List[Dict[str, Any]] = []
+    
+    stats = {
+        "total": len(props),
+        "same_id": 0,
+        "no_comuna": 0,
+        "diff_comuna": 0,
+        "diff_dorms": 0,
+        "price_too_high": 0,
+        "passed": 0,
+        "errors": 0
+    }
 
     print(f"Base property: comuna='{base_comuna}', dormitorios={base_dorms}, price={base_price}, lat={base_lat}, lon={base_lon}")
+    print(f"Total properties to filter: {len(props)}")
 
     # 2) FILTRO ESTRICTO según enunciado, pero sólo si tenemos datos para filtrar
     for p in props:
@@ -93,29 +110,43 @@ def basic_filter_and_rank(base: Dict[str, Any],
 
             # excluir la misma propiedad base si está en el listado interno
             if base_id is not None and p.get("id") == base_id:
+                stats["same_id"] += 1
+                continue
+            
+            # Si no se pudo extraer comuna de la propiedad candidata
+            if not comuna_p:
+                stats["no_comuna"] += 1
                 continue
 
             # misma comuna (SIEMPRE obligatorio)
             if comuna_p != base_comuna:
+                stats["diff_comuna"] += 1
                 continue
 
             # mismos dormitorios (solo si conozco dormitorios base)
             if base_dorms is not None and dormitorios_p != base_dorms:
+                stats["diff_dorms"] += 1
                 continue
 
             # precio <= precio base (solo si conozco precio base)
             if base_price is not None and price_p > base_price:
+                stats["price_too_high"] += 1
                 continue
 
-            print(f"Candidate property: comuna='{comuna_p}', dormitorios={dormitorios_p}, price={price_p}, lat={lat_p}, lon={lon_p}")
+            stats["passed"] += 1
+            print(f"✓ Candidate property: comuna='{comuna_p}', dormitorios={dormitorios_p}, price={price_p}, lat={lat_p}, lon={lon_p}")
 
             p_copy = {**p}
             candidates.append(p_copy)
-        except Exception:
+        except Exception as e:
+            stats["errors"] += 1
+            print(f"✗ Error processing property {p.get('id')}: {e}")
             continue
 
     # 4) Si no hay coincidencias, se devuelve lista vacía
+    print(f"\nFilter stats: {stats}")
     if not candidates:
+        print("⚠ No candidates found after filtering")
         return []
 
     # 3) ORDENAR según cercanía geográfica y precio
