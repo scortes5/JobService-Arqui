@@ -7,6 +7,7 @@ from celery_app import celery_app
 from services.extract_comuna import extract_comuna
 from services.geo_api import geocode
 from services.properties_api import get_internal_properties
+from services.bedrooms import _parse_bedrooms
 
 app = FastAPI(title="JobMaster - Recommendations", version="1.0.0")
 
@@ -79,7 +80,8 @@ def create_job(payload: JobCreateIn):
     bedrooms_raw = p.get("bedrooms")
     if bedrooms_raw is None:
         bedrooms_raw = p.get("beedrooms")
-    dormitorios = _as_int(bedrooms_raw)
+    parsed_bedrooms = _parse_bedrooms(bedrooms_raw)
+    dormitorios = parsed_bedrooms if parsed_bedrooms is not None else 0
 
     # 4) Normalizar precio
     price = _as_float(p.get("price"))
