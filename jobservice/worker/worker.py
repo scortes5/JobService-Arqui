@@ -88,6 +88,8 @@ def basic_filter_and_rank(base: Dict[str, Any],
             comuna_p = (extract_comuna(loc_str) or "").strip().lower()
             dormitorios_p = _parse_bedrooms(p.get("bedrooms"))
             price_p = _safe_float(p.get("price"), default=float("inf"))
+            lat_p = p.get("lat")
+            lon_p = p.get("lon")
 
             # excluir la misma propiedad base si está en el listado interno
             if base_id is not None and p.get("id") == base_id:
