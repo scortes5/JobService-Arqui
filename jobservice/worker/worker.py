@@ -43,35 +43,43 @@ def _safe_float(x, default=0.0):
 def basic_filter_and_rank(base: Dict[str, Any],
                           props: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Cumple el enunciado:
-
-    1) Obtener comuna, ubicación geográfica, dormitorios y precio de la propiedad base.
+    1) Obtener comuna, dormitorios, precio y ubicación de la propiedad base.
     2) Filtrar propiedades del sistema con:
        - misma comuna
-       - mismo número de dormitorios
-       - precio <= precio base
+       - mismo número de dormitorios (si se conoce)
+       - precio <= precio base (si se conoce)
     3) Ordenar por:
        - distancia geográfica a la propiedad base
        - luego por precio (menor a mayor)
-    4) Devolver a lo más 3 coincidencias. Si no hay, se devuelve lista vacía.
+    4) Devolver a lo más 3 coincidencias. Si no hay, lista vacía.
     """
 
     base_comuna = (base.get("comuna") or "").strip().lower()
 
-    base_dorms = base.get("dormitorios")
+    # dormitorios base: si no se puede parsear, NO filtramos por dormitorios
+    base_dorms_raw = base.get("dormitorios")
     try:
-        base_dorms = int(base_dorms) if base_dorms is not None else 0
+        base_dorms = int(base_dorms_raw) if base_dorms_raw is not None else None
     except Exception:
-        base_dorms = 0
+        base_dorms = None
 
-    base_price = _safe_float(base.get("price"), default=0.0)
+    # precio base: si no se puede parsear, NO filtramos por precio
+    raw_base_price = base.get("price")
+    if raw_base_price is None:
+        base_price = None
+    else:
+        try:
+            base_price = float(raw_base_price)
+        except Exception:
+            base_price = None
+
     base_lat = base.get("lat")
     base_lon = base.get("lon")
     base_id = base.get("property_id")
 
     candidates: List[Dict[str, Any]] = []
 
-    # 2) FILTRO ESTRICTO según enunciado
+    # 2) FILTRO ESTRICTO según enunciado, pero sólo si tenemos datos para filtrar
     for p in props:
         try:
             loc_str = p.get("location") or p.get("name") or ""
@@ -83,16 +91,16 @@ def basic_filter_and_rank(base: Dict[str, Any],
             if base_id is not None and p.get("id") == base_id:
                 continue
 
-            # misma comuna
+            # misma comuna (SIEMPRE obligatorio)
             if comuna_p != base_comuna:
                 continue
 
-            # mismos dormitorios
-            if dormitorios_p != base_dorms:
+            # mismos dormitorios (solo si conozco dormitorios base)
+            if base_dorms is not None and dormitorios_p != base_dorms:
                 continue
 
-            # precio <= precio base
-            if price_p > base_price:
+            # precio <= precio base (solo si conozco precio base)
+            if base_price is not None and price_p > base_price:
                 continue
 
             p_copy = {**p}
@@ -164,7 +172,6 @@ def basic_filter_and_rank(base: Dict[str, Any],
     return enriched_valid[:3]
 
 
-
 # ---------------- task Celery ---------------- #
 
 @celery.task(name="tasks.recommend")
@@ -197,8 +204,8 @@ def recommend(base_property: Dict[str, Any]):
                 "precio": p.get("price"),
                 "comuna": extract_comuna(p.get("location") or p.get("name") or ""),
                 "dormitorios": _parse_bedrooms(p.get("bedrooms")),
-                "lat": base_property.get("lat"),
-                "lon": base_property.get("lon"),
+                "lat": p.get("lat"),
+                "lon": p.get("lon"),
                 "url": p.get("url"),
                 "img": p.get("img"),
             }
