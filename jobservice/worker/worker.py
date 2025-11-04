@@ -30,15 +30,27 @@ def fetch_all_properties() -> List[Dict[str, Any]]:
     all_results: List[Dict[str, Any]] = []
     page = 1
     limit = 500
+    pages_fetched = 0
     while True:
         data = get_internal_properties(page=page, limit=limit)
-        results = data.get("results", [])
-        if not results:
+        # soportar distintas llaves posibles en la API
+        results = (
+            data.get("results")
+            or data.get("data")
+            or data.get("items")
+            or []
+        )
+        count = len(results)
+        print(f"[Worker] fetch_all_properties: page={page}, got={count}")
+        if count == 0:
             break
         all_results.extend(results)
-        if len(results) < limit:
+        pages_fetched += 1
+        # si la página trajo menos que el límite, probablemente no hay más
+        if count < limit:
             break
         page += 1
+    print(f"[Worker] fetch_all_properties: total_properties={len(all_results)}, pages={pages_fetched}")
     return all_results
 
 
